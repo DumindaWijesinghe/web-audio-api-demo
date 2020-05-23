@@ -1,0 +1,377 @@
+<!DOCTYPE html>
+<html>
+  <body>
+    <br />
+    <button class="start">Start Synth</button>
+    <br />
+    <br />
+    <br />
+    <div>
+      <input type="range" class="release" min="0" max="1" step="0.01" />
+      <label>Rlease</label>
+    </div>
+    <br />
+    <div>
+      <input type="range" class="osc-1-gain" min="0" max="1" step="0.01" />
+      <label>Osc 1 Gain (Sine)</label>
+      <input type="range" class="osc-1-pitch" min="-4" max="4" step="1" />
+      <label>Osc 1 Pitch (Sine)</label>
+    </div>
+    <div>
+      <input type="range" class="osc-2-gain" min="0" max="1" step="0.01" />
+      <label>Osc 2 Gain (Square)</label>
+      <input type="range" class="osc-2-pitch" min="-4" max="4" step="1" />
+      <label>Osc 2 Pitch (Square)</label>
+    </div>
+    <div>
+      <input type="range" class="osc-3-gain" min="0" max="1" step="0.01" />
+      <label>Osc 3 Gain (Saw)</label>
+      <input type="range" class="osc-3-pitch" min="-4" max="4" step="1" />
+      <label>Osc 3 Pitch (Saw)</label>
+    </div>
+    <br />
+    <br />
+    <canvas
+      id="oscilloscope"
+      width="200"
+      height="100"
+      style="border: 1px solid #000000;"
+    ></canvas>
+    <p>
+      Note: Please <b>Start synth</b> before playing and use keys
+      <b>(q, w, e, r, t, y, u, i, o, p)</b> to play notes
+      <b>(C5, D5, E5, F5, G5, A5, B5, C6, D6, E6)</b> respectively.
+    </p>
+    <script>
+      const noteToFreqMap = {
+        C: [
+          16.35,
+          32.7,
+          65.41,
+          130.81,
+          261.63,
+          523.25,
+          1046.5,
+          2093.0,
+          4186.01,
+        ],
+        Db: [
+          17.32,
+          34.65,
+          69.3,
+          138.59,
+          277.18,
+          554.37,
+          1108.73,
+          2217.46,
+          4434.92,
+        ],
+        D: [
+          18.35,
+          36.71,
+          73.42,
+          146.83,
+          293.66,
+          587.33,
+          1174.66,
+          2349.32,
+          4698.64,
+        ],
+        Eb: [
+          19.45,
+          38.89,
+          77.78,
+          155.56,
+          311.13,
+          622.25,
+          1244.51,
+          2489.02,
+          4978.03,
+        ],
+        E: [20.6, 41.2, 82.41, 164.81, 329.63, 659.26, 1318.51, 2637.02],
+        F: [21.83, 43.65, 87.31, 174.61, 349.23, 698.46, 1396.91, 2793.83],
+        Gb: [23.12, 46.25, 92.5, 185.0, 369.99, 739.99, 1479.98, 2959.96],
+        G: [24.5, 49.0, 98.0, 196.0, 392.0, 783.99, 1567.98, 3135.96],
+        Ab: [25.96, 51.91, 103.83, 207.65, 415.3, 830.61, 1661.22, 3322.44],
+        A: [27.5, 55.0, 110.0, 220.0, 440.0, 880.0, 1760.0, 3520.0],
+        Bb: [29.14, 58.27, 116.54, 233.08, 466.16, 932.33, 1864.66, 3729.31],
+        B: [30.87, 61.74, 123.47, 246.94, 493.88, 987.77, 1975.53, 3951.07],
+      };
+
+      const keyToNoteMap = {
+        q: {
+          octave: 5,
+          note: "C",
+        },
+        w: {
+          octave: 5,
+          note: "D",
+        },
+        e: {
+          octave: 5,
+          note: "E",
+        },
+        r: {
+          octave: 5,
+          note: "F",
+        },
+        t: {
+          octave: 5,
+          note: "G",
+        },
+        y: {
+          octave: 5,
+          note: "A",
+        },
+        u: {
+          octave: 5,
+          note: "B",
+        },
+        i: {
+          octave: 6,
+          note: "C",
+        },
+        o: {
+          octave: 6,
+          note: "D",
+        },
+        p: {
+          octave: 6,
+          note: "E",
+        },
+      };
+
+      const AudioContext = window.AudioContext || window.webkitAudioContext;
+      let audioCtx;
+
+      let osc1, osc2, osc3;
+
+      let osc1Pitch = 0,
+        osc2Pitch = 0,
+        osc3Pitch = 0;
+
+      let osc1Gain = 0.2,
+        osc2Gain = 0.2,
+        osc3Gain = 0.2;
+
+      let amp1, amp2, amp3;
+
+      let master;
+
+      let reverb;
+
+      let analyser;
+
+      async function init() {
+        audioCtx = new AudioContext();
+
+        osc1 = audioCtx.createOscillator();
+        osc1.type = "sine";
+        osc1.frequency.value = 440;
+
+        osc2 = audioCtx.createOscillator();
+        osc2.type = "square";
+        osc2.frequency.value = 220;
+
+        osc3 = audioCtx.createOscillator();
+        osc3.type = "sawtooth";
+        osc3.frequency.value = 110;
+
+        amp1 = audioCtx.createGain();
+        amp2 = audioCtx.createGain();
+        amp3 = audioCtx.createGain();
+
+        master = audioCtx.createGain();
+
+        osc1.connect(amp1);
+        osc2.connect(amp2);
+        osc3.connect(amp3);
+
+        amp1.connect(master);
+        amp1.gain.setValueAtTime(0.25, audioCtx.currentTime);
+        amp2.connect(master);
+        amp2.gain.setValueAtTime(0.75, audioCtx.currentTime);
+        amp3.connect(master);
+        amp3.gain.setValueAtTime(0.55, audioCtx.currentTime);
+
+        reverb = await createReverb();
+
+        master.connect(reverb);
+
+        analyser = audioCtx.createAnalyser();
+
+        reverb.connect(analyser);
+        analyser.connect(audioCtx.destination);
+
+        analyser.fftSize = 2048;
+        var bufferLength = analyser.frequencyBinCount;
+        var dataArray = new Uint8Array(bufferLength);
+        analyser.getByteTimeDomainData(dataArray);
+
+        // Get a canvas defined with ID "oscilloscope"
+        var canvas = document.getElementById("oscilloscope");
+        var canvasCtx = canvas.getContext("2d");
+
+        // draw an oscilloscope of the current audio source
+        function draw() {
+          requestAnimationFrame(draw);
+
+          analyser.getByteTimeDomainData(dataArray);
+
+          canvasCtx.fillStyle = "rgb(200, 200, 200)";
+          canvasCtx.fillRect(0, 0, canvas.width, canvas.height);
+
+          canvasCtx.lineWidth = 2;
+          canvasCtx.strokeStyle = "rgb(0, 0, 0)";
+
+          canvasCtx.beginPath();
+
+          var sliceWidth = (canvas.width * 1.0) / bufferLength;
+          var x = 0;
+
+          for (var i = 0; i < bufferLength; i++) {
+            var v = dataArray[i] / 128.0;
+            var y = (v * canvas.height) / 2;
+
+            if (i === 0) {
+              canvasCtx.moveTo(x, y);
+            } else {
+              canvasCtx.lineTo(x, y);
+            }
+
+            x += sliceWidth;
+          }
+
+          canvasCtx.lineTo(canvas.width, canvas.height / 2);
+          canvasCtx.stroke();
+        }
+
+        draw();
+      }
+
+      init();
+
+      master.gain.setValueAtTime(0, audioCtx.currentTime);
+
+      let release = 1;
+
+      function start() {
+        osc1.start();
+        osc2.start();
+        osc3.start();
+      }
+
+      async function createReverb() {
+        let convolver = audioCtx.createConvolver();
+
+        // load impulse response from file
+        let response = await fetch("impulse-response.wav");
+        let arrayBuffer = await response.arrayBuffer();
+        convolver.buffer = await audioCtx.decodeAudioData(arrayBuffer);
+
+        return convolver;
+      }
+
+      function getNoteForKey(keyName) {
+        return keyToNoteMap[keyName];
+      }
+
+      function getFreqForNote(noteObject) {
+        return noteToFreqMap[noteObject.note][noteObject.octave];
+      }
+
+      function setFreq(freq) {
+        osc1.frequency.value = parseInt(freq * Math.pow(2, osc1Pitch));
+        osc2.frequency.value = parseInt(freq * Math.pow(2, osc2Pitch));
+        osc3.frequency.value = parseInt(freq * Math.pow(2, osc3Pitch));
+      }
+
+      function setGain() {
+        amp1.gain.setValueAtTime(osc1Gain, audioCtx.currentTime);
+        amp2.gain.setValueAtTime(osc2Gain, audioCtx.currentTime);
+        amp3.gain.setValueAtTime(osc3Gain, audioCtx.currentTime);
+      }
+
+      function playNote(noteObject) {
+        const freq = getFreqForNote(noteObject);
+        setFreq(freq);
+        setGain();
+        master.gain.setValueAtTime(1, audioCtx.currentTime);
+        master.gain.setTargetAtTime(0, audioCtx.currentTime, release);
+      }
+
+      function matchClass(event, className) {
+        return event.target.matches(className);
+      }
+
+      // capture keyboard events
+      document.addEventListener(
+        "keydown",
+        function (event) {
+          console.log(event.key);
+          let keyName = event.key;
+
+          if (/^[qwertyuiop]$/gi.test(keyName)) {
+            const noteObject = getNoteForKey(keyName);
+            playNote(noteObject);
+          }
+
+          return;
+        },
+        false
+      );
+
+      document.addEventListener(
+        "click",
+        function (event) {
+          if (event.target.matches(".start")) {
+            start();
+          }
+
+          return;
+        },
+        false
+      );
+
+      // capture slider movements
+      document.addEventListener(
+        "change",
+        function (e) {
+          if (matchClass(e, ".release")) {
+            release = parseFloat(event.target.value);
+          } else if (matchClass(e, ".osc-1-pitch")) {
+            osc1Pitch = parseFloat(event.target.value);
+          } else if (matchClass(e, ".osc-2-pitch")) {
+            osc2Pitch = parseFloat(event.target.value);
+          } else if (matchClass(e, ".osc-3-pitch")) {
+            osc3Pitch = parseFloat(event.target.value);
+          } else if (matchClass(e, ".osc-1-gain")) {
+            osc1Gain = parseFloat(event.target.value);
+          } else if (matchClass(e, ".osc-2-gain")) {
+            osc2Gain = parseFloat(event.target.value);
+          } else if (matchClass(e, ".osc-3-gain")) {
+            osc3Gain = parseFloat(event.target.value);
+          }
+
+          return;
+        },
+        false
+      );
+
+      navigator.requestMIDIAccess().then(function (access) {
+        // Get lists of available MIDI controllers
+        const inputs = access.inputs.values();
+        const outputs = access.outputs.values();
+
+        access.onstatechange = function (e) {
+          // Print information about the (dis)connected MIDI controller
+          console.log(e.port.name, e.port.manufacturer, e.port.state);
+        };
+      }).catch(e=>{
+          console.log(e);
+          
+      });
+
+    </script>
+  </body>
+</html>
